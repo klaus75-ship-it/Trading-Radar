@@ -1,0 +1,67 @@
+{
+  "mode": "wolve_file",
+  "account": {
+    "risk_per_trade": 0.005,
+    "max_margin_usage": 0.25
+  },
+  "scan": {
+    "interval_seconds": 60,
+    "run_once": false,
+    "max_price_age_seconds": 120
+  },
+  "storage": {
+    "sqlite_path": "radar.sqlite3"
+  },
+  "wolve": {
+    "common_files_dir": "/Users/klaus/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
+  },
+  "symbols": {
+    "XAUUSD": {
+      "enabled": true,
+      "prices_file": "wolve_mt5_prices.json",
+      "stats_file": "wolve_mt5_stats.json",
+      "history_file": "wolve_mt5_history.csv",
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.12,
+      "min_score": 70,
+      "point": 0.01,
+      "digits": 2,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 100.0,
+      "tick_value": 1.0,
+      "tick_size": 0.01,
+      "contract_size": 100.0,
+      "trade_stops_level": 50,
+      "trade_freeze_level": 0,
+      "swap_long": 0.0,
+      "swap_short": 0.0,
+      "trade_mode": 4
+    },
+    "NDX100": {
+      "enabled": false,
+      "prices_file": "wolve_mt5_prices_ndx100.json",
+      "stats_file": "wolve_mt5_stats_ndx100.json",
+      "history_file": "wolve_mt5_history_ndx100.csv",
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.15,
+      "min_score": 70,
+      "point": 0.1,
+      "digits": 1,
+      "volume_min": 0.01,
+      "volume_step": 0.01,
+      "volume_max": 10.0,
+      "tick_value": 1.0,
+      "tick_size": 0.1,
+      "contract_size": 1.0,
+      "trade_stops_level": 50,
+      "trade_freeze_level": 0,
+      "swap_long": 0.0,
+      "swap_short": 0.0,
+      "trade_mode": 4
+    }
+  }
+}
+

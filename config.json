@@ -1,0 +1,39 @@
+{
+  "bridge": {
+    "host": "127.0.0.1",
+    "port": 9001,
+    "request_timeout_seconds": 5
+  },
+  "account": {
+    "risk_per_trade": 0.005,
+    "max_margin_usage": 0.25
+  },
+  "scan": {
+    "interval_seconds": 60,
+    "run_once": false
+  },
+  "storage": {
+    "sqlite_path": "radar.sqlite3"
+  },
+  "symbols": {
+    "XAUUSD": {
+      "enabled": true,
+      "atr_timeframe": "M15",
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.12,
+      "max_tick_age_seconds": 10,
+      "min_score": 70
+    },
+    "NDX100": {
+      "enabled": true,
+      "atr_timeframe": "M15",
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.15,
+      "max_tick_age_seconds": 10,
+      "min_score": 70
+    }
+  }
+}
+

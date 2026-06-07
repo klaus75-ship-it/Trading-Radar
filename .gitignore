@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+radar.sqlite3
+radar.sqlite3-*
+telegram_state.json

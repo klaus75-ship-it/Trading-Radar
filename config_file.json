@@ -1,0 +1,44 @@
+{
+  "account": {
+    "risk_per_trade": 0.005,
+    "max_margin_usage": 0.25,
+    "allow_min_lot_when_over_budget": false,
+    "max_min_lot_risk": 0.03
+  },
+  "scan": {
+    "interval_seconds": 60,
+    "run_once": false,
+    "max_state_age_seconds": 30
+  },
+  "storage": {
+    "sqlite_path": "radar.sqlite3"
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token_env": "TELEGRAM_BOT_TOKEN",
+    "chat_id_env": "TELEGRAM_CHAT_ID",
+    "state_path": "telegram_state.json",
+    "min_repeat_seconds": 3600
+  },
+  "file_bridge": {
+    "state_file": "/Users/klaus/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files/wolve_radar_state.json"
+  },
+  "symbols": {
+    "XAUUSD": {
+      "enabled": true,
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.12,
+      "max_tick_age_seconds": 259200,
+      "min_score": 70
+    },
+    "NDX100": {
+      "enabled": true,
+      "atr_period": 14,
+      "stop_atr_multiple": 1.2,
+      "max_spread_to_atr": 0.15,
+      "max_tick_age_seconds": 259200,
+      "min_score": 70
+    }
+  }
+}
