@@ -112,7 +112,7 @@ class TelegramNotifier:
         volume = f"{result.suggested_volume:g}"
         margin = _money(result.margin_required)
         reasons = _format_reasons(result.reasons)
-        decision = _decision_text(result.decision)
+        decision = _decision_text(result, structure, prop)
         if structure is None:
             return (
                 f"{result.symbol} | {decision}\n"
@@ -229,12 +229,20 @@ def _level_bucket(value: float | None) -> str:
     return f"{value:.1f}"
 
 
-def _decision_text(decision: str) -> str:
-    if decision == "OBSERVE":
-        return "可觀察"
-    if decision == "REJECT":
+def _decision_text(
+    result: TradeabilityResult,
+    structure: MarketStructureResult | None,
+    prop: PropChallengeResult | None,
+) -> str:
+    if result.decision == "REJECT":
         return "暫不交易"
-    return decision
+    if result.decision == "OBSERVE":
+        if structure is not None and structure.trigger_level is None:
+            return "只觀察"
+        if prop is not None and prop.status == "PF 暫不允許":
+            return "只觀察"
+        return "可操作觀察"
+    return result.decision
 
 
 def _format_reasons(reasons: list[str]) -> str:

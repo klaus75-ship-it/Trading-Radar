@@ -63,41 +63,81 @@ def evaluate_market_structure(
     if latest_range_atr >= 2.3:
         return _disorder(snapshot.symbol, latest_range_atr)
 
+    live_price = _mid_price(snapshot, last_close)
+
     if abs(move_atr) >= 2.2 and range_position >= 0.55 and (higher_highs or higher_lows):
         support = _last_price(swing_lows) or recent_low
-        risk = max(last_close - support, atr)
+        pullback_high = support + atr * 0.6
+        pullback_distance_atr = (live_price - support) / atr
+        if live_price > pullback_high:
+            return MarketStructureResult(
+                symbol=snapshot.symbol,
+                structure="趨勢延續",
+                bias="偏多",
+                setup=f"等回踩到 {_round_price(support)}-{_round_price(pullback_high)} 後重新站穩，不追高",
+                confidence=_confidence(68 + min(abs(move_atr) * 3, 12) - max(compression_ratio - 1.0, 0) * 10),
+                trigger_level=None,
+                invalid_level=_round_price(support - atr * 0.25),
+                target_level=None,
+                reasons=[
+                    f"近段推進約 {move_atr:.1f} ATR",
+                    "swing 結構偏向抬高",
+                    f"現價離回踩區約 {pullback_distance_atr:.1f} ATR，追高風險偏大",
+                ],
+            )
+        trigger = max(live_price + atr * 0.15, support + atr * 0.25)
+        risk = max(trigger - (support - atr * 0.25), atr)
         return MarketStructureResult(
             symbol=snapshot.symbol,
             structure="趨勢延續",
             bias="偏多",
-            setup="等回踩後重新站穩，不追高",
+            setup="回踩已接近，等重新站穩再看",
             confidence=_confidence(70 + min(abs(move_atr) * 4, 15) - max(compression_ratio - 1.0, 0) * 10),
-            trigger_level=_round_price(max(support, recent_low)),
+            trigger_level=_round_price(trigger),
             invalid_level=_round_price(support - atr * 0.25),
-            target_level=_round_price(last_close + risk),
+            target_level=_round_price(trigger + risk),
             reasons=[
                 f"近段推進約 {move_atr:.1f} ATR",
                 "swing 結構偏向抬高",
-                f"收盤位於近 24 根區間 {range_position:.0%}",
+                f"現價回到回踩區附近，距支撐 {pullback_distance_atr:.1f} ATR",
             ],
         )
 
     if abs(move_atr) >= 2.2 and range_position <= 0.45 and (lower_highs or lower_lows):
         resistance = _last_price(swing_highs) or recent_high
-        risk = max(resistance - last_close, atr)
+        pullback_low = resistance - atr * 0.6
+        pullback_distance_atr = (resistance - live_price) / atr
+        if live_price < pullback_low:
+            return MarketStructureResult(
+                symbol=snapshot.symbol,
+                structure="趨勢延續",
+                bias="偏空",
+                setup=f"等反彈到 {_round_price(pullback_low)}-{_round_price(resistance)} 後重新轉弱，不追空",
+                confidence=_confidence(68 + min(abs(move_atr) * 3, 12) - max(compression_ratio - 1.0, 0) * 10),
+                trigger_level=None,
+                invalid_level=_round_price(resistance + atr * 0.25),
+                target_level=None,
+                reasons=[
+                    f"近段推進約 {move_atr:.1f} ATR",
+                    "swing 結構偏向降低",
+                    f"現價離反彈區約 {pullback_distance_atr:.1f} ATR，追空風險偏大",
+                ],
+            )
+        trigger = min(live_price - atr * 0.15, resistance - atr * 0.25)
+        risk = max((resistance + atr * 0.25) - trigger, atr)
         return MarketStructureResult(
             symbol=snapshot.symbol,
             structure="趨勢延續",
             bias="偏空",
-            setup="等反彈後重新轉弱，不追空",
+            setup="反彈已接近，等重新轉弱再看",
             confidence=_confidence(70 + min(abs(move_atr) * 4, 15) - max(compression_ratio - 1.0, 0) * 10),
-            trigger_level=_round_price(min(resistance, recent_high)),
+            trigger_level=_round_price(trigger),
             invalid_level=_round_price(resistance + atr * 0.25),
-            target_level=_round_price(last_close - risk),
+            target_level=_round_price(trigger - risk),
             reasons=[
                 f"近段推進約 {move_atr:.1f} ATR",
                 "swing 結構偏向降低",
-                f"收盤位於近 24 根區間 {range_position:.0%}",
+                f"現價回到反彈區附近，距壓力 {pullback_distance_atr:.1f} ATR",
             ],
         )
 
@@ -202,6 +242,12 @@ def _last_price(swings: list[tuple[int, float]]) -> float | None:
     if not swings:
         return None
     return swings[-1][1]
+
+
+def _mid_price(snapshot: SymbolSnapshot, fallback: float) -> float:
+    if snapshot.bid > 0 and snapshot.ask > 0:
+        return (snapshot.bid + snapshot.ask) / 2
+    return fallback
 
 
 def _confidence(value: float) -> int:

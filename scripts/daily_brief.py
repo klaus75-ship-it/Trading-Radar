@@ -116,7 +116,7 @@ def build_brief(config_path: Path, config: dict[str, Any]) -> str:
 
 
 def _symbol_lines(symbol, tradeability, structure, session, prop) -> list[str]:
-    status = "可觀察" if tradeability.decision == "OBSERVE" else "暫不交易"
+    status = _display_status(tradeability, structure, prop)
     lines = [
         f"{symbol}: {status}",
         f"- 市場: {session.status}",
@@ -146,6 +146,16 @@ def _level(value: float | None) -> str:
 
 def _money(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}"
+
+
+def _display_status(tradeability, structure, prop) -> str:
+    if tradeability.decision != "OBSERVE":
+        return "暫不交易"
+    if structure.trigger_level is None:
+        return "只觀察"
+    if prop is not None and prop.status == "PF 暫不允許":
+        return "只觀察"
+    return "可操作觀察"
 
 
 def _load_env(path: Path) -> None:
