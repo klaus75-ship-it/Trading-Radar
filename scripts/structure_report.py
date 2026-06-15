@@ -48,6 +48,7 @@ def main() -> None:
 
     account = _account_from_state(state["account"])
     server_time = _optional_float(state.get("server_time")) or time.time()
+    state_mtime = state_path.stat().st_mtime
     payloads = {item["symbol"]: item for item in state.get("symbols", [])}
     selected = set(args.symbol or config["symbols"].keys())
 
@@ -69,11 +70,17 @@ def main() -> None:
             print()
             continue
 
-        snapshot = _snapshot_from_payload(payload)
         bars = _closed_bars(
             [_bar_from_payload(item) for item in payload.get("bars", [])],
             str(config.get("file_bridge", {}).get("timeframe", "M15")),
             server_time,
+        )
+        snapshot = _snapshot_from_payload(
+            payload,
+            state_mtime,
+            server_time,
+            bars,
+            float(symbol_config["max_tick_age_seconds"]),
         )
         atr = atr_from_bars(bars, int(symbol_config["atr_period"]))
         order_check = OrderCheck(

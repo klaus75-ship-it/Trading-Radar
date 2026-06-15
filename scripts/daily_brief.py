@@ -32,6 +32,7 @@ from trading_radar.position_management import evaluate_position_management
 from trading_radar.prop_challenge import evaluate_prop_challenge
 from trading_radar.structure_context import build_structure_context
 from trading_radar.telegram_notifier import TelegramConfig, TelegramNotifier
+from trading_radar.telegram_notifier import _stage_text
 
 
 def main() -> None:
@@ -58,9 +59,10 @@ def main() -> None:
 
 
 def build_brief(config_path: Path, config: dict[str, Any]) -> str:
-    _state_path, state = _read_bridge_state(config)
+    state_path, state = _read_bridge_state(config)
     account = _account_from_state(state["account"])
     server_time = _optional_float(state.get("server_time")) or time.time()
+    state_mtime = state_path.stat().st_mtime
     payloads = {item["symbol"]: item for item in state.get("symbols", [])}
     positions = [_position_from_payload(item) for item in state.get("positions", [])]
 
@@ -82,11 +84,17 @@ def build_brief(config_path: Path, config: dict[str, Any]) -> str:
             lines.extend([f"{symbol}: 暫不交易", f"- bridge error: {payload.get('error', 'unknown')}", ""])
             continue
 
-        snapshot = _snapshot_from_payload(payload)
         bars = _closed_bars(
             [_bar_from_payload(item) for item in payload.get("bars", [])],
             str(config.get("file_bridge", {}).get("timeframe", "M15")),
             server_time,
+        )
+        snapshot = _snapshot_from_payload(
+            payload,
+            state_mtime,
+            server_time,
+            bars,
+            float(symbol_config["max_tick_age_seconds"]),
         )
         atr = atr_from_bars(bars, int(symbol_config["atr_period"]))
         order_check = OrderCheck(
@@ -128,7 +136,7 @@ def _symbol_lines(symbol, tradeability, structure, session, prop, management) ->
             f"- 市場: {session.status}",
             f"- 持倉: {management.side} {management.volume:g} lot @ {_level(management.entry_price)}",
             f"- 現價: {_level(management.current_price)} | 浮動: {management.unrealized_points:.2f} 點 / {_money(management.profit)}",
-            f"- 階段: {management.stage}",
+            f"- 階段: {_stage_text(management.stage)}",
             f"- 建議: {management.action}",
             f"- 保護位: {_level(management.stop_reference)} | 目標: {_level(management.target_reference)}",
             "",
@@ -172,7 +180,7 @@ def _display_status(tradeability, structure, prop) -> str:
         return "只觀察"
     if prop is not None and prop.status == "PF 暫不允許":
         return "只觀察"
-    return "可操作觀察"
+    return "等條件成形"
 
 
 def _load_env(path: Path) -> None:

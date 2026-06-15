@@ -117,7 +117,7 @@ export TELEGRAM_CHAT_ID="123456789"
 python3 -m trading_radar.app_file --run-once
 ```
 
-Alerts are event based. By default Telegram only sends actionable setup alerts with a clear trigger and acceptable PF state, plus position-management alerts when a symbol already has an open position. Plain observe reports, rejected scans, and PF-denied setups are kept in the console/SQLite instead of being pushed every scan.
+Alerts are event based. Telegram messages are classified as `ENTRY`, `SETUP`, `AVOID`, `HEALTH`, or `持倉管理` so a setup is not mistaken for an entry. By default Telegram only sends setup/entry-style events with a clear trigger and acceptable PF state, plus position-management alerts when a symbol already has an open position. Plain observe reports, rejected scans, and PF-denied setups are kept in the console/SQLite instead of being pushed every scan.
 
 Unchanged alerts are not repeated by default. Set `repeat_unchanged` to `true` only if you want the same fingerprint to be resent after `min_repeat_seconds`.
 
@@ -149,6 +149,8 @@ Check recent scans:
 scripts/check_status.sh
 ```
 
+The status script also shows recent `health_events`, including stale or unreadable bridge state.
+
 Print a chart-structure report for visual calibration against MT5:
 
 ```bash
@@ -165,6 +167,12 @@ Send that brief to Telegram:
 
 ```bash
 scripts/daily_brief.py --config config_file.json --send-telegram
+```
+
+Run the production file-bridge smoke test:
+
+```bash
+scripts/file_bridge_smoke_test.py
 ```
 
 ## Legacy Socket Bridge
@@ -212,9 +220,9 @@ XAUUSD OBSERVE score=100 spread/ATR=4.20% volume=0.03 reasons=[]
 NDX100 REJECT score=20 spread/ATR=22.00% volume=0 reasons=['spread/ATR too high: 22.00%']
 ```
 
-Every scan is also saved to SQLite in `radar.sqlite3`.
+Every scan is also saved to SQLite in `radar.sqlite3`. Bridge-level outages are stored in `health_events`.
 
-The audit log stores tradeability, account equity/margin, market structure, prop challenge status, and a config snapshot so later reviews can answer why a signal did or did not fire.
+The audit log stores tradeability, account equity/margin, market structure, prop challenge status, position-management state, and a config snapshot. It is enough for operational review, but not a full raw-bar replay store.
 
 ## Configure Symbols
 
@@ -222,7 +230,7 @@ For the file bridge, edit `config_file.json`.
 
 Broker symbol names differ. If your broker uses `NAS100`, `USTEC`, `US100`, or `NDX100.cash`, change the config symbol key from `NDX100` to the exact MT5 Market Watch name.
 
-`max_tick_age_seconds` is intentionally short. On weekends or after market close, the EA may keep writing a fresh state file while the last broker tick is old; those scans are marked stale and should be treated as structure review, not live entry signals.
+`max_tick_age_seconds` is the maximum tolerated broker tick age. The file bridge compares broker `server_time - tick_time` and the state file mtime so a fresh file rewrite does not automatically make a stale broker tick look live.
 
 ## Prop Challenge Mode
 

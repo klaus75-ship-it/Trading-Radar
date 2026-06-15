@@ -4,6 +4,7 @@ import json
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -13,24 +14,30 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    process = subprocess.Popen(
-        [sys.executable, "-m", "trading_radar.app", "--config", "config.json", "--run-once"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        config["storage"]["sqlite_path"] = str(Path(tmp) / "radar.sqlite3")
+        config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    # Give the Python server a moment to bind before the mock MT5 bridge connects.
-    time.sleep(0.5)
-    thread = threading.Thread(target=mock_bridge, daemon=True)
-    thread.start()
+        process = subprocess.Popen(
+            [sys.executable, "-m", "trading_radar.app", "--config", str(config_path), "--run-once"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
-    stdout, stderr = process.communicate(timeout=20)
-    print(stdout)
-    if stderr:
-        print(stderr, file=sys.stderr)
-    raise SystemExit(process.returncode)
+        # Give the Python server a moment to bind before the mock MT5 bridge connects.
+        time.sleep(0.5)
+        thread = threading.Thread(target=mock_bridge, daemon=True)
+        thread.start()
+
+        stdout, stderr = process.communicate(timeout=20)
+        print(stdout)
+        if stderr:
+            print(stderr, file=sys.stderr)
+        raise SystemExit(process.returncode)
 
 
 def mock_bridge() -> None:

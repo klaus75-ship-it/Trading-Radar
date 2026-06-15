@@ -51,6 +51,30 @@ class Storage:
         )
         self.connection.commit()
 
+    def save_health_event(
+        self,
+        component: str,
+        status: str,
+        message: str,
+        details: dict | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO health_events (
+              timestamp, component, status, message, details_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(),
+                component,
+                status,
+                message,
+                json.dumps(details, ensure_ascii=False, sort_keys=True) if details is not None else None,
+            ),
+        )
+        self.connection.commit()
+
     def save_scan(
         self,
         snapshot: SymbolSnapshot,
@@ -191,6 +215,24 @@ class Storage:
               config_snapshot_json TEXT
             )
             """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS health_events (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              timestamp TEXT NOT NULL,
+              component TEXT NOT NULL,
+              status TEXT NOT NULL,
+              message TEXT NOT NULL,
+              details_json TEXT
+            )
+            """
+        )
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scans_symbol_timestamp ON scans(symbol, timestamp)"
+        )
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_health_events_timestamp ON health_events(timestamp)"
         )
         self._ensure_column("scans", "risk_budget", "REAL")
         self._ensure_column("scans", "min_volume_loss", "REAL")

@@ -135,7 +135,8 @@ class TelegramNotifier:
         management_key = "" if management is None else (
             f"{management.stage}:{management.side}:{_signal_level_bucket(management.entry_price, result.atr)}:"
             f"{_signal_level_bucket(management.stop_reference, result.atr)}:"
-            f"{_signal_level_bucket(management.target_reference, result.atr)}"
+            f"{_signal_level_bucket(management.target_reference, result.atr)}:"
+            f"{_risk_note_key(management.risk_note)}"
         )
         return f"{result.decision}:{reason_key}:{structure_key}:{prop_key}:{session_key}:{management_key}"
 
@@ -149,52 +150,37 @@ class TelegramNotifier:
         management: PositionManagementResult | None,
     ) -> str:
         spread_text = _pct(result.spread_to_atr)
-        min_risk_text = _pct(result.min_volume_risk_fraction)
-        target_equity = _money(result.min_account_equity_required)
-        volume = f"{result.suggested_volume:g}"
-        margin = _money(result.margin_required)
         reasons = _format_reasons(result.reasons)
-        decision = _decision_text(result, structure, prop)
         if management is not None:
             return _format_management_message(result, structure, prop, session, context, management)
         if structure is None:
             return (
-                f"{result.symbol} | {decision}\n"
+                f"{result.symbol} | AVOID - 資料不足\n"
                 f"{_format_session_line(session)}"
                 f"分數: {result.score}/100\n"
                 f"\n"
                 f"成本: spread/ATR {spread_text}\n"
-                f"建議手數: {volume} lot\n"
-                f"最小手風險: {min_risk_text}\n"
-                f"合理資金門檻: {target_equity}\n"
-                f"預估保證金: {margin}\n"
-                f"\n"
                 f"雷達判斷:\n{reasons}"
             )
 
+        category = _message_category(result, structure, prop, session, context)
+        risk_line = _compact_risk_line(result, prop)
         return (
-            f"{result.symbol} | {decision}\n"
+            f"{result.symbol} | {category} - {_category_title(category, structure)}\n"
             f"{_format_session_line(session)}"
-            f"Summary: {structure.structure} / {structure.bias} / 結構信心 {structure.confidence}/100\n"
-            f"Setup: {structure.setup}\n"
-            f"PF: {_prop_summary(prop)}\n"
-            f"建議手數: {volume} lot | 最小手風險: {min_risk_text}\n"
+            f"現在: {structure.structure} / {structure.bias} / 信心 {structure.confidence}/100\n"
+            f"下一步: {_next_step(category, structure, context)}\n"
             f"觸發: {_level(structure.trigger_level)} | 失效: {_level(structure.invalid_level)} | 目標: {_level(structure.target_level)}\n"
+            f"PF/風險: {_prop_summary(prop)} | {risk_line}\n"
             f"\n"
-            f"風險:\n"
-            f"- spread/ATR: {spread_text}\n"
-            f"- 合理資金門檻: {target_equity}\n"
-            f"- 預估保證金: {margin}\n"
-            f"{_format_prop_compact(prop)}"
+            f"Setup:\n"
+            f"- {structure.setup}\n"
+            f"{_format_prop_reasons(prop)}"
+            f"{reasons}\n"
             f"\n"
             f"Report:\n"
-            f"- 風控分: {result.score}/100\n"
-            f"{_format_context(context)}\n"
-            f"\n"
-            f"理由:\n"
-            f"{_format_structure_reasons(structure.reasons)}\n"
-            f"{_format_prop_reasons(prop)}"
-            f"{reasons}"
+            f"- 風控分: {result.score}/100 | spread/ATR: {spread_text}\n"
+            f"{_format_context(context)}"
         )
 
     def _send(self, message: str) -> bool:
@@ -231,8 +217,11 @@ class TelegramNotifier:
             return {}
         try:
             with open(self.config.state_path, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except (JSONDecodeError, OSError) as exc:
+                state = json.load(file)
+            if not isinstance(state, dict):
+                raise ValueError(f"expected object, got {type(state).__name__}")
+            return state
+        except (JSONDecodeError, OSError, ValueError) as exc:
             bad_path = self.config.state_path.with_suffix(self.config.state_path.suffix + ".bad")
             try:
                 self.config.state_path.replace(bad_path)
@@ -284,6 +273,89 @@ def _confidence_bucket(value: int) -> str:
     return str((value // 5) * 5)
 
 
+def _risk_note_key(note: str) -> str:
+    if "未偵測到 SL" in note:
+        return "missing_sl"
+    if "收緊" in note:
+        return "tighten_sl"
+    if "SL 已接近" in note:
+        return "sl_ok"
+    return note[:40]
+
+
+def _message_category(
+    result: TradeabilityResult,
+    structure: MarketStructureResult,
+    prop: PropChallengeResult | None,
+    session: MarketSession | None,
+    context: StructureContext | None,
+) -> str:
+    if session is not None and (session.is_weekend or session.is_stale):
+        return "HEALTH"
+    if result.decision != "OBSERVE":
+        return "AVOID"
+    if prop is not None and prop.status == "PF 暫不允許":
+        return "AVOID"
+    if structure.trigger_level is None:
+        return "SETUP"
+    if structure.structure in {"高位消化", "低位消化", "壓縮待突破"}:
+        return "SETUP"
+    if _is_chasing(structure, context):
+        return "SETUP"
+    if structure.confidence < 70:
+        return "SETUP"
+    return "ENTRY"
+
+
+def _category_title(category: str, structure: MarketStructureResult) -> str:
+    if category == "ENTRY":
+        return "接近可執行，等觸發"
+    if category == "AVOID":
+        return "暫不交易"
+    if category == "HEALTH":
+        return "資料/盤別只供回顧"
+    if structure.structure in {"高位消化", "低位消化"}:
+        return "消化中，不追價"
+    return "等條件成形"
+
+
+def _next_step(
+    category: str,
+    structure: MarketStructureResult,
+    context: StructureContext | None,
+) -> str:
+    if category == "ENTRY":
+        return "只等價格觸發，不提前進"
+    if category == "AVOID":
+        return "等待更乾淨的位置，現在不進"
+    if category == "HEALTH":
+        return "只做結構回顧，不當即時訊號"
+    if structure.trigger_level is None:
+        return "先觀察，不設入場"
+    if structure.structure in {"高位消化", "低位消化"}:
+        return "等突破後接受或回測確認，不在箱體中段追"
+    if _is_chasing(structure, context):
+        return "離合理位置偏遠，等新回踩或新結構"
+    return "等條件確認，還不是入場提醒"
+
+
+def _is_chasing(structure: MarketStructureResult, context: StructureContext | None) -> bool:
+    if context is None:
+        return False
+    if structure.bias == "偏多" and context.range_position is not None:
+        return context.range_position > 0.80
+    if structure.bias == "偏空" and context.range_position is not None:
+        return context.range_position < 0.20
+    return False
+
+
+def _compact_risk_line(result: TradeabilityResult, prop: PropChallengeResult | None) -> str:
+    pieces = [f"手數 {result.suggested_volume:g}", f"最小手風險 {_pct(result.min_volume_risk_fraction)}"]
+    if prop is not None and prop.risk_one_contract is not None:
+        pieces.append(f"PF 1口 {_money(prop.risk_one_contract)}")
+    return " / ".join(pieces)
+
+
 def _decision_text(
     result: TradeabilityResult,
     structure: MarketStructureResult | None,
@@ -296,7 +368,7 @@ def _decision_text(
             return "只觀察"
         if prop is not None and prop.status == "PF 暫不允許":
             return "只觀察"
-        return "可操作觀察"
+        return "等條件成形"
     return result.decision
 
 
@@ -341,7 +413,7 @@ def _format_management_message(
         f"{_format_session_line(session)}"
         f"持倉: {management.side} {management.volume:g} lot @ {_money(management.entry_price)}\n"
         f"現價: {_money(management.current_price)} | 浮動: {management.unrealized_points:.2f} 點 / {_money(management.profit)}\n"
-        f"階段: {management.stage}\n"
+        f"階段: {_stage_text(management.stage)}\n"
         f"建議: {management.action}\n"
         f"\n"
         f"結構: {structure_line}\n"
@@ -362,6 +434,18 @@ def _format_management_reasons(management: PositionManagementResult) -> str:
     if not management.reasons:
         return "- 偵測到既有持倉，切換成管理模式"
     return "\n".join(f"- {reason}" for reason in management.reasons)
+
+
+def _stage_text(stage: str) -> str:
+    mapping = {
+        "AGAINST_STRUCTURE": "方向相反，優先降風險",
+        "INVALID": "結構失效",
+        "PROTECT_PROFIT": "保護浮盈",
+        "DEFEND": "防守",
+        "BOX_MANAGE": "箱體內管理",
+        "MANAGE": "持倉管理",
+    }
+    return mapping.get(stage, stage)
 
 
 def _prop_summary(prop: PropChallengeResult | None) -> str:

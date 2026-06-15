@@ -47,12 +47,19 @@ def run_once(config: dict[str, Any], storage: Storage, notifier: TelegramNotifie
         state_path, state = _read_bridge_state(config)
     except BridgeStateError as exc:
         print(f"bridge state unavailable: {exc}")
+        storage.save_health_event(
+            component="file_bridge",
+            status="ERROR",
+            message=str(exc),
+            details={"config_path": config.get("_config_path")},
+        )
         return
 
     account = _account_from_state(state["account"])
     symbols = {item["symbol"]: item for item in state.get("symbols", [])}
     positions = [_position_from_payload(item) for item in state.get("positions", [])]
     server_time = _optional_float(state.get("server_time")) or time.time()
+    state_mtime = state_path.stat().st_mtime
 
     for symbol, symbol_config in config["symbols"].items():
         if not symbol_config.get("enabled", True):
@@ -69,12 +76,13 @@ def run_once(config: dict[str, Any], storage: Storage, notifier: TelegramNotifie
             storage.save_bridge_event(symbol, reason, account, config)
             continue
 
-        snapshot = _snapshot_from_payload(payload)
         bars = _closed_bars(
             [_bar_from_payload(item) for item in payload.get("bars", [])],
             str(config.get("file_bridge", {}).get("timeframe", "M15")),
             server_time,
         )
+        max_tick_age = float(symbol_config["max_tick_age_seconds"])
+        snapshot = _snapshot_from_payload(payload, state_mtime, server_time, bars, max_tick_age)
         atr = atr_from_bars(bars, int(symbol_config["atr_period"]))
         order_check = OrderCheck(
             ok=True,
@@ -118,14 +126,27 @@ def _account_from_state(payload: dict[str, Any]) -> AccountInfo:
     )
 
 
-def _snapshot_from_payload(payload: dict[str, Any]) -> SymbolSnapshot:
+def _snapshot_from_payload(
+    payload: dict[str, Any],
+    state_mtime: float | None = None,
+    server_time: float | None = None,
+    bars: list[Bar] | None = None,
+    max_future_skew_seconds: float = 300.0,
+) -> SymbolSnapshot:
     point = float(payload.get("point", 0.0))
     bid = float(payload.get("bid", 0.0))
     ask = float(payload.get("ask", 0.0))
     spread = float(payload.get("spread", ask - bid))
     tick_time = float(payload.get("tick_time", 0.0))
     now = datetime.now(timezone.utc)
-    tick_age = max(0.0, now.timestamp() - tick_time) if tick_time > 0 else 999999.0
+    tick_age = _freshness_age_seconds(
+        now.timestamp(),
+        tick_time,
+        state_mtime,
+        server_time,
+        bars,
+        max_future_skew_seconds,
+    )
     return SymbolSnapshot(
         timestamp=now,
         symbol=str(payload["symbol"]),
@@ -170,12 +191,45 @@ def _position_from_payload(payload: dict[str, Any]) -> PositionInfo:
         entry_price=float(payload.get("entry_price", payload.get("price_open", 0.0))),
         current_price=float(payload.get("current_price", payload.get("price_current", 0.0))),
         profit=float(payload.get("profit", 0.0)),
-        stop_loss=_optional_float(payload.get("stop_loss", payload.get("sl"))),
-        take_profit=_optional_float(payload.get("take_profit", payload.get("tp"))),
+        stop_loss=_optional_price(payload.get("stop_loss", payload.get("sl"))),
+        take_profit=_optional_price(payload.get("take_profit", payload.get("tp"))),
         ticket=int(payload["ticket"]) if payload.get("ticket") is not None else None,
         magic=int(payload["magic"]) if payload.get("magic") is not None else None,
         comment=str(payload.get("comment", "")),
     )
+
+
+def _freshness_age_seconds(
+    now_ts: float,
+    tick_time: float,
+    state_mtime: float | None,
+    server_time: float | None,
+    bars: list[Bar] | None,
+    max_future_skew_seconds: float,
+) -> float:
+    candidates: list[float] = []
+    if tick_time > 0 and server_time is not None and server_time > 0:
+        candidates.append(max(0.0, server_time - tick_time))
+    elif tick_time > 0:
+        tick_delta = now_ts - tick_time
+        if tick_delta >= 0:
+            candidates.append(tick_delta)
+        elif abs(tick_delta) <= max_future_skew_seconds:
+            candidates.append(0.0)
+        else:
+            # Broker/server time can be ahead of local UTC. In that case the
+            # raw epoch is not a reliable freshness source, so fall back to
+            # file/bar freshness instead of treating the tick as brand new.
+            candidates.append(abs(tick_delta))
+    if state_mtime is not None and state_mtime > 0:
+        candidates.append(max(0.0, now_ts - state_mtime))
+    if bars:
+        last_bar_time = bars[-1].time
+        if last_bar_time > 0:
+            bar_delta = now_ts - last_bar_time
+            if bar_delta >= 0:
+                candidates.append(bar_delta)
+    return max(candidates) if candidates else 999999.0
 
 
 def _closed_bars(bars: list[Bar], timeframe: str, server_time: float) -> list[Bar]:
@@ -246,6 +300,13 @@ def _optional_float(value: Any) -> float | None:
     if value is None or value == "":
         return None
     return float(value)
+
+
+def _optional_price(value: Any) -> float | None:
+    parsed = _optional_float(value)
+    if parsed is None or parsed <= 0:
+        return None
+    return parsed
 
 
 def _resolve_path(config_path: str, target_path: str) -> Path:
