@@ -1,6 +1,11 @@
 __pycache__/
 *.py[cod]
 .DS_Store
-radar.sqlite3
-radar.sqlite3-*
+*.sqlite3
+*.sqlite3-*
+tradesea_futures_state.json
+tradesea_futures_state.json.tmp
 telegram_state.json
+telegram_state*.json
+.env
+logs/

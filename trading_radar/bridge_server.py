@@ -33,11 +33,17 @@ class BridgeServer:
         self._pending_lock = threading.Lock()
         self._stop = threading.Event()
         self._ready = threading.Event()
+        self._started = threading.Event()
+        self._startup_error: BaseException | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._serve, name="mt5-bridge-server", daemon=True)
         self._thread.start()
+        if not self._started.wait(1.0):
+            raise BridgeError("MT5 bridge server did not start")
+        if self._startup_error is not None:
+            raise BridgeError(f"MT5 bridge server failed to start: {self._startup_error}") from self._startup_error
 
     def stop(self) -> None:
         self._stop.set()
@@ -110,12 +116,18 @@ class BridgeServer:
         return response
 
     def _serve(self) -> None:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((self.host, self.port))
-        server.listen(1)
-        server.settimeout(0.5)
-        self._server_socket = server
+        try:
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind((self.host, self.port))
+            server.listen(1)
+            server.settimeout(0.5)
+            self._server_socket = server
+        except OSError as exc:
+            self._startup_error = exc
+            self._started.set()
+            return
+        self._started.set()
 
         while not self._stop.is_set():
             try:
@@ -177,4 +189,3 @@ class BridgeServer:
                     raise BridgeError(f"failed to send request to MT5 bridge: {exc}") from exc
             time.sleep(0.05)
         raise BridgeError("MT5 bridge is not connected")
-

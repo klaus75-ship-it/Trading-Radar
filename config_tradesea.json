@@ -8,17 +8,17 @@
   "scan": {
     "interval_seconds": 60,
     "run_once": false,
-    "max_state_age_seconds": 30
+    "max_state_age_seconds": 300
   },
   "storage": {
-    "sqlite_path": "radar.sqlite3"
+    "sqlite_path": "radar_tradesea.sqlite3"
   },
   "prop_challenge": {
     "enabled": true,
     "account_size": 50000,
     "max_loss": 2000,
     "profit_target": 3000,
-    "symbols": ["XAUUSD"],
+    "symbols": ["MGC"],
     "contract": "MGC",
     "dollars_per_point": 10,
     "standard_contracts": 1,
@@ -35,30 +35,30 @@
     "enabled": false,
     "bot_token_env": "TELEGRAM_BOT_TOKEN",
     "chat_id_env": "TELEGRAM_CHAT_ID",
-    "state_path": "telegram_state.json",
+    "state_path": "telegram_state_tradesea.json",
     "min_repeat_seconds": 3600
   },
   "file_bridge": {
-    "state_file": "/Users/klaus/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files/wolve_radar_state.json",
+    "state_file": "tradesea_futures_state.json",
     "timeframe": "M15",
     "read_attempts": 5,
     "read_retry_seconds": 0.05
   },
   "symbols": {
-    "XAUUSD": {
+    "MGC": {
       "enabled": true,
       "atr_period": 14,
       "stop_atr_multiple": 1.2,
-      "max_spread_to_atr": 0.12,
-      "max_tick_age_seconds": 7200,
+      "max_spread_to_atr": 0.08,
+      "max_tick_age_seconds": 259200,
       "min_score": 70
     },
-    "NDX100": {
+    "MNQ": {
       "enabled": true,
       "atr_period": 14,
       "stop_atr_multiple": 1.2,
-      "max_spread_to_atr": 0.15,
-      "max_tick_age_seconds": 7200,
+      "max_spread_to_atr": 0.08,
+      "max_tick_age_seconds": 259200,
       "min_score": 70
     }
   }
