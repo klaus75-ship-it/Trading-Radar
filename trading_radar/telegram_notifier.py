@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from .market_structure import MarketStructureResult
 from .market_session import MarketSession
 from .models import TradeabilityResult
+from .position_management import PositionManagementResult
 from .prop_challenge import PropChallengeResult
 from .structure_context import StructureContext
 
@@ -53,11 +54,12 @@ class TelegramNotifier:
         prop: PropChallengeResult | None = None,
         session: MarketSession | None = None,
         context: StructureContext | None = None,
+        management: PositionManagementResult | None = None,
     ) -> None:
         if not self.config.enabled:
             return
 
-        fingerprint = self._fingerprint(result, structure, prop, session)
+        fingerprint = self._fingerprint(result, structure, prop, session, management)
         now = time.time()
         last = self.state.get(result.symbol, {})
         last_sent_at = float(last.get("sent_at", 0))
@@ -65,7 +67,7 @@ class TelegramNotifier:
         if fingerprint == last.get("fingerprint") and now - last_sent_at < self.config.min_repeat_seconds:
             return
 
-        message = self._format_message(result, structure, prop, session, context)
+        message = self._format_message(result, structure, prop, session, context, management)
         if not self._send(message):
             return
         self.state[result.symbol] = {
@@ -80,6 +82,7 @@ class TelegramNotifier:
         structure: MarketStructureResult | None,
         prop: PropChallengeResult | None,
         session: MarketSession | None,
+        management: PositionManagementResult | None,
     ) -> str:
         reason_key = "|".join(_normalize_reason(reason) for reason in result.reasons)
         risk_bucket = _bucket(result.min_volume_risk_fraction, 0.01)
@@ -96,7 +99,11 @@ class TelegramNotifier:
             f"{_level_bucket(prop.risk_one_contract)}:{_level_bucket(prop.risk_aggressive)}"
         )
         session_key = "" if session is None else session.status
-        return f"{result.decision}:{result.score}:{risk_bucket}:{spread_bucket}:{reason_key}:{structure_key}:{prop_key}:{session_key}"
+        management_key = "" if management is None else (
+            f"{management.stage}:{management.side}:{_level_bucket(management.entry_price)}:"
+            f"{_level_bucket(management.stop_reference)}:{_level_bucket(management.unrealized_points)}"
+        )
+        return f"{result.decision}:{result.score}:{risk_bucket}:{spread_bucket}:{reason_key}:{structure_key}:{prop_key}:{session_key}:{management_key}"
 
     def _format_message(
         self,
@@ -105,6 +112,7 @@ class TelegramNotifier:
         prop: PropChallengeResult | None,
         session: MarketSession | None,
         context: StructureContext | None,
+        management: PositionManagementResult | None,
     ) -> str:
         spread_text = _pct(result.spread_to_atr)
         min_risk_text = _pct(result.min_volume_risk_fraction)
@@ -113,6 +121,8 @@ class TelegramNotifier:
         margin = _money(result.margin_required)
         reasons = _format_reasons(result.reasons)
         decision = _decision_text(result, structure, prop)
+        if management is not None:
+            return _format_management_message(result, structure, prop, session, context, management)
         if structure is None:
             return (
                 f"{result.symbol} | {decision}\n"
@@ -268,6 +278,45 @@ def _format_context(context: StructureContext | None) -> str:
         f"- 壓縮程度: {_pct(context.compression)}\n"
         f"- 最新K range: {_ratio(context.latest_range_atr)} ATR"
     )
+
+
+def _format_management_message(
+    result: TradeabilityResult,
+    structure: MarketStructureResult | None,
+    prop: PropChallengeResult | None,
+    session: MarketSession | None,
+    context: StructureContext | None,
+    management: PositionManagementResult,
+) -> str:
+    structure_line = "n/a" if structure is None else (
+        f"{structure.structure} / {structure.bias} / 結構信心 {structure.confidence}/100"
+    )
+    return (
+        f"{result.symbol} | 持倉管理\n"
+        f"{_format_session_line(session)}"
+        f"持倉: {management.side} {management.volume:g} lot @ {_money(management.entry_price)}\n"
+        f"現價: {_money(management.current_price)} | 浮動: {management.unrealized_points:.2f} 點 / {_money(management.profit)}\n"
+        f"階段: {management.stage}\n"
+        f"建議: {management.action}\n"
+        f"\n"
+        f"結構: {structure_line}\n"
+        f"保護位: {_level(management.stop_reference)} | 目標參考: {_level(management.target_reference)}\n"
+        f"風險: {management.risk_note}\n"
+        f"PF: {_prop_summary(prop)}\n"
+        f"\n"
+        f"Report:\n"
+        f"- 風控分: {result.score}/100\n"
+        f"{_format_context(context)}\n"
+        f"\n"
+        f"理由:\n"
+        f"{_format_management_reasons(management)}"
+    )
+
+
+def _format_management_reasons(management: PositionManagementResult) -> str:
+    if not management.reasons:
+        return "- 偵測到既有持倉，切換成管理模式"
+    return "\n".join(f"- {reason}" for reason in management.reasons)
 
 
 def _prop_summary(prop: PropChallengeResult | None) -> str:

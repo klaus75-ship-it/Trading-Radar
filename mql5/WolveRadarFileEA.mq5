@@ -48,6 +48,7 @@ void WriteState()
    json += JsonPair("margin_level", AccountInfoDouble(ACCOUNT_MARGIN_LEVEL)) + ",";
    json += JsonPair("currency", AccountInfoString(ACCOUNT_CURRENCY));
    json += "},";
+   json += "\"positions\":" + PositionsJson() + ",";
    json += "\"symbols\":[";
 
    string symbols[];
@@ -160,6 +161,43 @@ string BarsJson(const string symbol)
    return bars;
 }
 
+string PositionsJson()
+{
+   string json = "[";
+   bool first = true;
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      if(!first)
+         json += ",";
+
+      long type = PositionGetInteger(POSITION_TYPE);
+      string side = type == POSITION_TYPE_BUY ? "BUY" : "SELL";
+      json += "{"
+         + JsonPair("ticket", (long)ticket) + ","
+         + JsonPair("symbol", PositionGetString(POSITION_SYMBOL)) + ","
+         + JsonPair("side", side) + ","
+         + JsonPair("volume", PositionGetDouble(POSITION_VOLUME)) + ","
+         + JsonPair("entry_price", PositionGetDouble(POSITION_PRICE_OPEN)) + ","
+         + JsonPair("current_price", PositionGetDouble(POSITION_PRICE_CURRENT)) + ","
+         + JsonPair("stop_loss", PositionGetDouble(POSITION_SL)) + ","
+         + JsonPair("take_profit", PositionGetDouble(POSITION_TP)) + ","
+         + JsonPair("profit", PositionGetDouble(POSITION_PROFIT)) + ","
+         + JsonPair("magic", (long)PositionGetInteger(POSITION_MAGIC)) + ","
+         + JsonPair("comment", PositionGetString(POSITION_COMMENT))
+         + "}";
+      first = false;
+   }
+   json += "]";
+   return json;
+}
+
 ENUM_TIMEFRAMES ParseTimeframe(const string name)
 {
    if(name == "M1") return PERIOD_M1;
@@ -202,4 +240,3 @@ string JsonEscape(string value)
    StringReplace(value, "\n", "\\n");
    return value;
 }
-

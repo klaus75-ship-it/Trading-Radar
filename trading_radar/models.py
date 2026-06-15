@@ -126,6 +126,21 @@ class TradeabilityResult:
     min_account_equity_required: float | None = None
 
 
+@dataclass(frozen=True)
+class PositionInfo:
+    symbol: str
+    side: str
+    volume: float
+    entry_price: float
+    current_price: float
+    profit: float
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    ticket: int | None = None
+    magic: int | None = None
+    comment: str = ""
+
+
 def bar_from_payload(payload: dict[str, Any]) -> Bar:
     return Bar(
         time=int(payload["time"]),

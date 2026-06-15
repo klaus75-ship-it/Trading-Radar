@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .market_structure import MarketStructureResult
 from .models import AccountInfo, SymbolSnapshot, TradeabilityResult
+from .position_management import PositionManagementResult
 from .prop_challenge import PropChallengeResult
 
 
@@ -58,6 +59,7 @@ class Storage:
         structure: MarketStructureResult | None = None,
         prop: PropChallengeResult | None = None,
         config_snapshot: dict | None = None,
+        management: PositionManagementResult | None = None,
     ) -> None:
         self.connection.execute(
             """
@@ -71,9 +73,13 @@ class Storage:
               structure_trigger_level, structure_invalid_level, structure_target_level,
               structure_reasons_json, prop_status, prop_mode, prop_stop_points,
               prop_risk_one_contract, prop_risk_aggressive, prop_reasons_json,
+              position_status, position_stage, position_side, position_volume,
+              position_entry_price, position_current_price, position_profit,
+              position_unrealized_points, position_stop_reference,
+              position_target_reference, position_action, position_reasons_json,
               config_snapshot_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp.isoformat(),
@@ -112,6 +118,18 @@ class Storage:
                 prop.risk_one_contract if prop is not None else None,
                 prop.risk_aggressive if prop is not None else None,
                 json.dumps(prop.reasons, ensure_ascii=False) if prop is not None else None,
+                management.status if management is not None else None,
+                management.stage if management is not None else None,
+                management.side if management is not None else None,
+                management.volume if management is not None else None,
+                management.entry_price if management is not None else None,
+                management.current_price if management is not None else None,
+                management.profit if management is not None else None,
+                management.unrealized_points if management is not None else None,
+                management.stop_reference if management is not None else None,
+                management.target_reference if management is not None else None,
+                management.action if management is not None else None,
+                json.dumps(management.reasons, ensure_ascii=False) if management is not None else None,
                 json.dumps(config_snapshot, ensure_ascii=False, sort_keys=True) if config_snapshot is not None else None,
             ),
         )
@@ -158,6 +176,18 @@ class Storage:
               prop_risk_one_contract REAL,
               prop_risk_aggressive REAL,
               prop_reasons_json TEXT,
+              position_status TEXT,
+              position_stage TEXT,
+              position_side TEXT,
+              position_volume REAL,
+              position_entry_price REAL,
+              position_current_price REAL,
+              position_profit REAL,
+              position_unrealized_points REAL,
+              position_stop_reference REAL,
+              position_target_reference REAL,
+              position_action TEXT,
+              position_reasons_json TEXT,
               config_snapshot_json TEXT
             )
             """
@@ -183,6 +213,18 @@ class Storage:
         self._ensure_column("scans", "prop_risk_one_contract", "REAL")
         self._ensure_column("scans", "prop_risk_aggressive", "REAL")
         self._ensure_column("scans", "prop_reasons_json", "TEXT")
+        self._ensure_column("scans", "position_status", "TEXT")
+        self._ensure_column("scans", "position_stage", "TEXT")
+        self._ensure_column("scans", "position_side", "TEXT")
+        self._ensure_column("scans", "position_volume", "REAL")
+        self._ensure_column("scans", "position_entry_price", "REAL")
+        self._ensure_column("scans", "position_current_price", "REAL")
+        self._ensure_column("scans", "position_profit", "REAL")
+        self._ensure_column("scans", "position_unrealized_points", "REAL")
+        self._ensure_column("scans", "position_stop_reference", "REAL")
+        self._ensure_column("scans", "position_target_reference", "REAL")
+        self._ensure_column("scans", "position_action", "TEXT")
+        self._ensure_column("scans", "position_reasons_json", "TEXT")
         self._ensure_column("scans", "config_snapshot_json", "TEXT")
         self.connection.commit()
 

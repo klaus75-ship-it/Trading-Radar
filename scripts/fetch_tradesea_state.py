@@ -231,6 +231,7 @@ def _to_state(
             "margin_level": 0.0,
             "currency": "USD",
         },
+        "positions": [],
         "symbols": symbols,
     }
 

@@ -19,6 +19,7 @@ from trading_radar.app_file import (
     _bar_from_payload,
     _closed_bars,
     _optional_float,
+    _position_from_payload,
     _read_bridge_state,
     _snapshot_from_payload,
 )
@@ -27,7 +28,9 @@ from trading_radar.market_session import detect_market_session
 from trading_radar.market_structure import evaluate_market_structure
 from trading_radar.metrics import atr_from_bars
 from trading_radar.models import OrderCheck
+from trading_radar.position_management import evaluate_position_management
 from trading_radar.prop_challenge import evaluate_prop_challenge
+from trading_radar.structure_context import build_structure_context
 from trading_radar.telegram_notifier import TelegramConfig, TelegramNotifier
 
 
@@ -59,6 +62,7 @@ def build_brief(config_path: Path, config: dict[str, Any]) -> str:
     account = _account_from_state(state["account"])
     server_time = _optional_float(state.get("server_time")) or time.time()
     payloads = {item["symbol"]: item for item in state.get("symbols", [])}
+    positions = [_position_from_payload(item) for item in state.get("positions", [])]
 
     lines = [
         "每日雷達摘要",
@@ -100,6 +104,7 @@ def build_brief(config_path: Path, config: dict[str, Any]) -> str:
             order_check=order_check,
         )
         structure = evaluate_market_structure(snapshot, bars, tradeability)
+        context = build_structure_context(bars, atr)
         session = detect_market_session(
             tick_age_seconds=snapshot.tick_age_seconds,
             stale_threshold_seconds=float(symbol_config["max_tick_age_seconds"]),
@@ -110,12 +115,24 @@ def build_brief(config_path: Path, config: dict[str, Any]) -> str:
             structure,
             symbol_config.get("prop_challenge", config.get("prop_challenge", {})),
         )
-        lines.extend(_symbol_lines(symbol, tradeability, structure, session, prop))
+        management = evaluate_position_management(snapshot, tradeability, structure, context, positions)
+        lines.extend(_symbol_lines(symbol, tradeability, structure, session, prop, management))
 
     return "\n".join(lines).rstrip()
 
 
-def _symbol_lines(symbol, tradeability, structure, session, prop) -> list[str]:
+def _symbol_lines(symbol, tradeability, structure, session, prop, management) -> list[str]:
+    if management is not None:
+        return [
+            f"{symbol}: 持倉管理",
+            f"- 市場: {session.status}",
+            f"- 持倉: {management.side} {management.volume:g} lot @ {_level(management.entry_price)}",
+            f"- 現價: {_level(management.current_price)} | 浮動: {management.unrealized_points:.2f} 點 / {_money(management.profit)}",
+            f"- 階段: {management.stage}",
+            f"- 建議: {management.action}",
+            f"- 保護位: {_level(management.stop_reference)} | 目標: {_level(management.target_reference)}",
+            "",
+        ]
     status = _display_status(tradeability, structure, prop)
     lines = [
         f"{symbol}: {status}",

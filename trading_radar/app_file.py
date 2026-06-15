@@ -12,7 +12,8 @@ from .filters import evaluate_tradeability
 from .market_structure import evaluate_market_structure
 from .market_session import detect_market_session
 from .metrics import atr_from_bars
-from .models import AccountInfo, Bar, OrderCheck, SymbolSnapshot
+from .models import AccountInfo, Bar, OrderCheck, PositionInfo, SymbolSnapshot
+from .position_management import evaluate_position_management
 from .prop_challenge import evaluate_prop_challenge
 from .storage import Storage
 from .structure_context import build_structure_context
@@ -50,6 +51,7 @@ def run_once(config: dict[str, Any], storage: Storage, notifier: TelegramNotifie
 
     account = _account_from_state(state["account"])
     symbols = {item["symbol"]: item for item in state.get("symbols", [])}
+    positions = [_position_from_payload(item) for item in state.get("positions", [])]
     server_time = _optional_float(state.get("server_time")) or time.time()
 
     for symbol, symbol_config in config["symbols"].items():
@@ -100,9 +102,10 @@ def run_once(config: dict[str, Any], storage: Storage, notifier: TelegramNotifie
             structure,
             symbol_config.get("prop_challenge", config.get("prop_challenge", {})),
         )
-        storage.save_scan(snapshot, result, account, structure, prop, config)
-        _print_result(result, structure, prop, session)
-        notifier.notify_result(result, structure, prop, session, context)
+        management = evaluate_position_management(snapshot, result, structure, context, positions)
+        storage.save_scan(snapshot, result, account, structure, prop, config, management)
+        _print_result(result, structure, prop, session, management)
+        notifier.notify_result(result, structure, prop, session, context, management)
 
 
 def _account_from_state(payload: dict[str, Any]) -> AccountInfo:
@@ -156,6 +159,22 @@ def _bar_from_payload(payload: dict[str, Any]) -> Bar:
         close=float(payload["close"]),
         tick_volume=float(payload.get("tick_volume", 0.0)),
         spread=float(payload.get("spread", 0.0)),
+    )
+
+
+def _position_from_payload(payload: dict[str, Any]) -> PositionInfo:
+    return PositionInfo(
+        symbol=str(payload.get("symbol", "")),
+        side=str(payload.get("side", "")).upper(),
+        volume=float(payload.get("volume", 0.0)),
+        entry_price=float(payload.get("entry_price", payload.get("price_open", 0.0))),
+        current_price=float(payload.get("current_price", payload.get("price_current", 0.0))),
+        profit=float(payload.get("profit", 0.0)),
+        stop_loss=_optional_float(payload.get("stop_loss", payload.get("sl"))),
+        take_profit=_optional_float(payload.get("take_profit", payload.get("tp"))),
+        ticket=int(payload["ticket"]) if payload.get("ticket") is not None else None,
+        magic=int(payload["magic"]) if payload.get("magic") is not None else None,
+        comment=str(payload.get("comment", "")),
     )
 
 
@@ -236,7 +255,7 @@ def _resolve_path(config_path: str, target_path: str) -> Path:
     return Path(config_path).resolve().parent / path
 
 
-def _print_result(result, structure=None, prop=None, session=None) -> None:
+def _print_result(result, structure=None, prop=None, session=None, management=None) -> None:
     spread_text = "n/a" if result.spread_to_atr is None else f"{result.spread_to_atr:.2%}"
     min_risk_text = "n/a" if result.min_volume_risk_fraction is None else f"{result.min_volume_risk_fraction:.2%}"
     required_text = (
@@ -252,11 +271,14 @@ def _print_result(result, structure=None, prop=None, session=None) -> None:
         f" prop={prop.status} mode={prop.mode} risk1={prop.risk_one_contract}"
     )
     session_text = "" if session is None else f" session={session.status}"
+    management_text = "" if management is None else (
+        f" position={management.side}:{management.volume:g} stage={management.stage} pnl={management.profit}"
+    )
     print(
         f"{result.symbol} {result.decision} score={result.score} "
         f"spread/ATR={spread_text} volume={result.suggested_volume} "
         f"minLotRisk={min_risk_text} targetEquity={required_text} "
-        f"margin={result.margin_required}{structure_text}{prop_text}{session_text} reasons={result.reasons}"
+        f"margin={result.margin_required}{structure_text}{prop_text}{session_text}{management_text} reasons={result.reasons}"
     )
 
 

@@ -89,6 +89,8 @@ This mode does not use sockets, does not read signal files, and does not trade.
 
 The Python side reads `wolve_radar_state.json` with short retry/backoff so a half-written JSON file does not stop the radar. It also ignores the still-forming M15 candle when calculating ATR and market structure.
 
+The file bridge also exports open MT5 positions. After updating `WolveRadarFileEA.mq5`, recompile it in MetaEditor or reattach the EA so Python can switch from setup alerts to position-management alerts when a symbol is already in a trade.
+
 ## Telegram Alerts
 
 Telegram is off by default. Enable it in `config_file.json`:
@@ -111,7 +113,9 @@ export TELEGRAM_CHAT_ID="123456789"
 python3 -m trading_radar.app_file --run-once
 ```
 
-Alerts are deduplicated by symbol, decision, risk bucket, spread bucket, market structure, and prop challenge risk state.
+Alerts are deduplicated by symbol, decision, risk bucket, spread bucket, market structure, prop challenge risk state, and position-management stage.
+
+If an open position exists for a symbol, Telegram uses `持倉管理` format with side, volume, entry, current price, floating PnL, structure protection level, and management action instead of sending another entry-style setup.
 
 Telegram failures are logged and do not stop scanning.
 
