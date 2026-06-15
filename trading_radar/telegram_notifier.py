@@ -131,7 +131,7 @@ class TelegramNotifier:
         return (
             f"{result.symbol} | {decision}\n"
             f"{_format_session_line(session)}"
-            f"Summary: {structure.structure} / {structure.bias} / {result.score}分\n"
+            f"Summary: {structure.structure} / {structure.bias} / 結構信心 {structure.confidence}/100\n"
             f"Setup: {structure.setup}\n"
             f"PF: {_prop_summary(prop)}\n"
             f"建議手數: {volume} lot | 最小手風險: {min_risk_text}\n"
@@ -144,7 +144,7 @@ class TelegramNotifier:
             f"{_format_prop_compact(prop)}"
             f"\n"
             f"Report:\n"
-            f"- 結構信心: {structure.confidence}/100\n"
+            f"- 風控分: {result.score}/100\n"
             f"{_format_context(context)}\n"
             f"\n"
             f"理由:\n"
