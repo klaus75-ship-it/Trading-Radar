@@ -73,22 +73,20 @@ def evaluate_market_structure(
         and tail_width <= atr * 2.0
         and tail_low >= recent_high - atr * 2.2
     ):
-        trigger = tail_high + atr * 0.1
         invalid = tail_low - atr * 0.1
-        risk = trigger - invalid
         return MarketStructureResult(
             symbol=snapshot.symbol,
             structure="高位消化",
             bias="偏多",
-            setup=f"高位箱體 {_round_price(tail_low)}-{_round_price(tail_high)}，箱體中間不追；上緣站穩才觀察",
+            setup=f"高位箱體 {_round_price(tail_low)}-{_round_price(tail_high)}，只等突破後回測接受；箱體中間和第一次上衝不追",
             confidence=_confidence(64 + min(move_atr, 12) - max(tail_width / atr - 1.0, 0) * 8),
-            trigger_level=_round_price(trigger),
+            trigger_level=None,
             invalid_level=_round_price(invalid),
-            target_level=_round_price(trigger + max(risk, atr)),
+            target_level=_round_price(tail_high + max(tail_width, atr)),
             reasons=[
                 f"急拉後仍在近 24 根高位 {range_position:.0%}",
                 f"最近 6 根收斂成 {tail_width / atr:.1f} ATR 小箱體",
-                f"現價位於小箱體 {tail_position:.0%}，不適合在中間追價",
+                f"現價位於小箱體 {tail_position:.0%}，第一次突破容易追高",
             ],
         )
 
@@ -98,22 +96,20 @@ def evaluate_market_structure(
         and tail_width <= atr * 2.0
         and tail_high <= recent_low + atr * 2.2
     ):
-        trigger = tail_low - atr * 0.1
         invalid = tail_high + atr * 0.1
-        risk = invalid - trigger
         return MarketStructureResult(
             symbol=snapshot.symbol,
             structure="低位消化",
             bias="偏空",
-            setup=f"低位箱體 {_round_price(tail_low)}-{_round_price(tail_high)}，箱體中間不追；下緣跌破被接受才觀察",
+            setup=f"低位箱體 {_round_price(tail_low)}-{_round_price(tail_high)}，只等跌破後回測接受；箱體中間和第一次下殺不追",
             confidence=_confidence(64 + min(abs(move_atr), 12) - max(tail_width / atr - 1.0, 0) * 8),
-            trigger_level=_round_price(trigger),
+            trigger_level=None,
             invalid_level=_round_price(invalid),
-            target_level=_round_price(trigger - max(risk, atr)),
+            target_level=_round_price(tail_low - max(tail_width, atr)),
             reasons=[
                 f"急跌後仍在近 24 根低位 {range_position:.0%}",
                 f"最近 6 根收斂成 {tail_width / atr:.1f} ATR 小箱體",
-                f"現價位於小箱體 {tail_position:.0%}，不適合在中間追空",
+                f"現價位於小箱體 {tail_position:.0%}，第一次跌破容易追空",
             ],
         )
 
@@ -121,7 +117,7 @@ def evaluate_market_structure(
         support = _last_price(swing_lows) or recent_low
         pullback_high = support + atr * 0.6
         pullback_distance_atr = (live_price - support) / atr
-        if live_price > pullback_high:
+        if live_price > pullback_high or range_position > 0.80:
             return MarketStructureResult(
                 symbol=snapshot.symbol,
                 structure="趨勢延續",
@@ -159,7 +155,7 @@ def evaluate_market_structure(
         resistance = _last_price(swing_highs) or recent_high
         pullback_low = resistance - atr * 0.6
         pullback_distance_atr = (resistance - live_price) / atr
-        if live_price < pullback_low:
+        if live_price < pullback_low or range_position < 0.20:
             return MarketStructureResult(
                 symbol=snapshot.symbol,
                 structure="趨勢延續",

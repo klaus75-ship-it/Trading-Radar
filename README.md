@@ -103,6 +103,7 @@ Telegram is off by default. Enable it in `config_file.json`:
   "state_path": "telegram_state.json",
   "min_repeat_seconds": 3600,
   "notify_rejects": false,
+  "notify_setups": false,
   "notify_observe_without_trigger": false,
   "notify_pf_denied_setups": false,
   "repeat_unchanged": false

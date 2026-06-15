@@ -69,15 +69,25 @@ void WriteState()
    }
    json += "]}";
 
-   int h = FileOpen(InpOutputFile, FILE_WRITE|FILE_TXT|FILE_COMMON|FILE_ANSI);
+   string tmpFile = InpOutputFile + ".tmp";
+   int h = FileOpen(tmpFile, FILE_WRITE|FILE_TXT|FILE_COMMON|FILE_ANSI);
    if(h == INVALID_HANDLE)
    {
       if(InpVerbose)
-         Print("WolveRadarFileEA cannot open output file err=", _LastError);
+         Print("WolveRadarFileEA cannot open temp output file err=", _LastError);
       return;
    }
    FileWriteString(h, json);
    FileClose(h);
+
+   ResetLastError();
+   if(!FileMove(tmpFile, FILE_COMMON, InpOutputFile, FILE_COMMON|FILE_REWRITE))
+   {
+      if(InpVerbose)
+         Print("WolveRadarFileEA cannot replace output file err=", _LastError);
+      FileDelete(tmpFile, FILE_COMMON);
+      return;
+   }
 }
 
 string SymbolState(const string symbol)

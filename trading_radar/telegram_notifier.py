@@ -26,6 +26,7 @@ class TelegramConfig:
     state_path: Path
     min_repeat_seconds: float
     notify_rejects: bool
+    notify_setups: bool
     notify_observe_without_trigger: bool
     notify_pf_denied_setups: bool
     repeat_unchanged: bool
@@ -43,6 +44,7 @@ class TelegramConfig:
             state_path=state_path,
             min_repeat_seconds=float(raw.get("min_repeat_seconds", 3600)),
             notify_rejects=bool(raw.get("notify_rejects", False)),
+            notify_setups=bool(raw.get("notify_setups", False)),
             notify_observe_without_trigger=bool(raw.get("notify_observe_without_trigger", False)),
             notify_pf_denied_setups=bool(raw.get("notify_pf_denied_setups", False)),
             repeat_unchanged=bool(raw.get("repeat_unchanged", False)),
@@ -67,7 +69,7 @@ class TelegramNotifier:
         if not self.config.enabled:
             return
 
-        if not self._should_notify(result, structure, prop, management):
+        if not self._should_notify(result, structure, prop, session, context, management):
             return
 
         fingerprint = self._fingerprint(result, structure, prop, session, management)
@@ -94,6 +96,8 @@ class TelegramNotifier:
         result: TradeabilityResult,
         structure: MarketStructureResult | None,
         prop: PropChallengeResult | None,
+        session: MarketSession | None,
+        context: StructureContext | None,
         management: PositionManagementResult | None,
     ) -> bool:
         if management is not None:
@@ -104,11 +108,16 @@ class TelegramNotifier:
             return False
         if structure is None:
             return self.config.notify_observe_without_trigger
+        category = _message_category(result, structure, prop, session, context)
+        if category == "ENTRY":
+            return True
+        if category == "SETUP":
+            return self.config.notify_setups
         if structure.trigger_level is None:
             return self.config.notify_observe_without_trigger
         if prop is not None and prop.status == "PF 暫不允許":
             return self.config.notify_pf_denied_setups
-        return True
+        return self.config.notify_rejects
 
     def _fingerprint(
         self,
