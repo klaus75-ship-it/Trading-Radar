@@ -101,7 +101,11 @@ Telegram is off by default. Enable it in `config_file.json`:
   "bot_token_env": "TELEGRAM_BOT_TOKEN",
   "chat_id_env": "TELEGRAM_CHAT_ID",
   "state_path": "telegram_state.json",
-  "min_repeat_seconds": 3600
+  "min_repeat_seconds": 3600,
+  "notify_rejects": false,
+  "notify_observe_without_trigger": false,
+  "notify_pf_denied_setups": false,
+  "repeat_unchanged": false
 }
 ```
 
@@ -113,7 +117,9 @@ export TELEGRAM_CHAT_ID="123456789"
 python3 -m trading_radar.app_file --run-once
 ```
 
-Alerts are deduplicated by symbol, decision, risk bucket, spread bucket, market structure, prop challenge risk state, and position-management stage.
+Alerts are event based. By default Telegram only sends actionable setup alerts with a clear trigger and acceptable PF state, plus position-management alerts when a symbol already has an open position. Plain observe reports, rejected scans, and PF-denied setups are kept in the console/SQLite instead of being pushed every scan.
+
+Unchanged alerts are not repeated by default. Set `repeat_unchanged` to `true` only if you want the same fingerprint to be resent after `min_repeat_seconds`.
 
 If an open position exists for a symbol, Telegram uses `持倉管理` format with side, volume, entry, current price, floating PnL, structure protection level, and management action instead of sending another entry-style setup.
 

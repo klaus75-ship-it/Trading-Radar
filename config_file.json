@@ -36,7 +36,11 @@
     "bot_token_env": "TELEGRAM_BOT_TOKEN",
     "chat_id_env": "TELEGRAM_CHAT_ID",
     "state_path": "telegram_state.json",
-    "min_repeat_seconds": 3600
+    "min_repeat_seconds": 3600,
+    "notify_rejects": false,
+    "notify_observe_without_trigger": false,
+    "notify_pf_denied_setups": false,
+    "repeat_unchanged": false
   },
   "file_bridge": {
     "state_file": "/Users/klaus/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files/wolve_radar_state.json",

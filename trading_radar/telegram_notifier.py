@@ -25,6 +25,10 @@ class TelegramConfig:
     chat_id_env: str
     state_path: Path
     min_repeat_seconds: float
+    notify_rejects: bool
+    notify_observe_without_trigger: bool
+    notify_pf_denied_setups: bool
+    repeat_unchanged: bool
 
     @classmethod
     def from_config(cls, config: dict, base_dir: Path) -> "TelegramConfig":
@@ -38,6 +42,10 @@ class TelegramConfig:
             chat_id_env=str(raw.get("chat_id_env", "TELEGRAM_CHAT_ID")),
             state_path=state_path,
             min_repeat_seconds=float(raw.get("min_repeat_seconds", 3600)),
+            notify_rejects=bool(raw.get("notify_rejects", False)),
+            notify_observe_without_trigger=bool(raw.get("notify_observe_without_trigger", False)),
+            notify_pf_denied_setups=bool(raw.get("notify_pf_denied_setups", False)),
+            repeat_unchanged=bool(raw.get("repeat_unchanged", False)),
         )
 
 
@@ -59,11 +67,16 @@ class TelegramNotifier:
         if not self.config.enabled:
             return
 
+        if not self._should_notify(result, structure, prop, management):
+            return
+
         fingerprint = self._fingerprint(result, structure, prop, session, management)
         now = time.time()
         last = self.state.get(result.symbol, {})
         last_sent_at = float(last.get("sent_at", 0))
 
+        if fingerprint == last.get("fingerprint") and not self.config.repeat_unchanged:
+            return
         if fingerprint == last.get("fingerprint") and now - last_sent_at < self.config.min_repeat_seconds:
             return
 
@@ -76,6 +89,27 @@ class TelegramNotifier:
         }
         self._save_state()
 
+    def _should_notify(
+        self,
+        result: TradeabilityResult,
+        structure: MarketStructureResult | None,
+        prop: PropChallengeResult | None,
+        management: PositionManagementResult | None,
+    ) -> bool:
+        if management is not None:
+            return True
+        if result.decision == "REJECT":
+            return self.config.notify_rejects
+        if result.decision != "OBSERVE":
+            return False
+        if structure is None:
+            return self.config.notify_observe_without_trigger
+        if structure.trigger_level is None:
+            return self.config.notify_observe_without_trigger
+        if prop is not None and prop.status == "PF 暫不允許":
+            return self.config.notify_pf_denied_setups
+        return True
+
     def _fingerprint(
         self,
         result: TradeabilityResult,
@@ -85,25 +119,25 @@ class TelegramNotifier:
         management: PositionManagementResult | None,
     ) -> str:
         reason_key = "|".join(_normalize_reason(reason) for reason in result.reasons)
-        risk_bucket = _bucket(result.min_volume_risk_fraction, 0.01)
-        spread_bucket = _bucket(result.spread_to_atr, 0.005)
         structure_key = ""
         if structure is not None:
             structure_key = (
-                f"{structure.structure}:{structure.bias}:{structure.confidence}:"
-                f"{_level_bucket(structure.trigger_level)}:"
-                f"{_level_bucket(structure.invalid_level)}"
+                f"{structure.structure}:{structure.bias}:"
+                f"{_confidence_bucket(structure.confidence)}:"
+                f"{_signal_level_bucket(structure.trigger_level, result.atr)}:"
+                f"{_signal_level_bucket(structure.invalid_level, result.atr)}"
             )
         prop_key = "" if prop is None else (
-            f"{prop.status}:{_level_bucket(prop.stop_points)}:"
-            f"{_level_bucket(prop.risk_one_contract)}:{_level_bucket(prop.risk_aggressive)}"
+            f"{prop.status}:{prop.mode}:"
+            f"{_signal_level_bucket(prop.stop_points, result.atr)}"
         )
         session_key = "" if session is None else session.status
         management_key = "" if management is None else (
-            f"{management.stage}:{management.side}:{_level_bucket(management.entry_price)}:"
-            f"{_level_bucket(management.stop_reference)}:{_level_bucket(management.unrealized_points)}"
+            f"{management.stage}:{management.side}:{_signal_level_bucket(management.entry_price, result.atr)}:"
+            f"{_signal_level_bucket(management.stop_reference, result.atr)}:"
+            f"{_signal_level_bucket(management.target_reference, result.atr)}"
         )
-        return f"{result.decision}:{result.score}:{risk_bucket}:{spread_bucket}:{reason_key}:{structure_key}:{prop_key}:{session_key}:{management_key}"
+        return f"{result.decision}:{reason_key}:{structure_key}:{prop_key}:{session_key}:{management_key}"
 
     def _format_message(
         self,
@@ -237,6 +271,17 @@ def _level_bucket(value: float | None) -> str:
     if value is None:
         return "none"
     return f"{value:.1f}"
+
+
+def _signal_level_bucket(value: float | None, atr: float | None) -> str:
+    if value is None:
+        return "none"
+    width = max((atr or 0.0) * 0.25, 1.0)
+    return str(round(value / width))
+
+
+def _confidence_bucket(value: int) -> str:
+    return str((value // 5) * 5)
 
 
 def _decision_text(
